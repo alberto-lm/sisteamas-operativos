@@ -7,6 +7,7 @@ algorithm = "fifo"
 PAGE_SIZE = 16
 RAM_SIZE = 2048
 DISK_SIZE = 4096
+MESSAGE = "Programa finalizado!!!"
 
 ram = []
 disk = []
@@ -182,7 +183,7 @@ def access_page(cmd):
                 print(f'Error: Segementation Fault. Process {process_id} does not exist')
             else:
                 global timer, algorithm
-                print(f'{cmd[0]} {virtual_direction} {process_id} {dirty_bit}')
+                print(f'{cmd[0]} {virtual_direction} {process_id} {dirty_bit    }')
                 print(f'Obtener la dirección real correspondiente a la dirección virtual {virtual_direction} del proceso {process_id}')
                 logic_page = int(virtual_direction / PAGE_SIZE)
                 access_page_key = f'{process_id}_{logic_page}'
@@ -240,6 +241,38 @@ def save_process(cmd):
             print("Second parameter should be an integer.")
     else:
         print("Incorrect number of parametes.")
+
+def get_stats(cmd):
+    '''Prints the stats pf the program. Turnaround, page faults and swaps by process. Avg turnaround.'''
+    print(cmd[0])
+    accum_turnaround = 0
+    finished_processes = 0
+    for process in stats:
+        if stats[process]["active_bit"] == 0:
+            turnaround = stats[process]["arrival_time"] - stats[process]["end_time"]
+            accum_turnaround += turnaround
+            finished_processes += 1
+            page_faults = stats[process]["page_faults"]
+            swap_ins = stats[process]["swap_ins"]
+            swap_outs = stats[process]["swap_outs"]
+            print(f'El proceso {process} tuvo un turnaround de {turnaround}s, {page_faults} page faults, {swap_outs} swap outs, {swap_ins} swap ins')
+    if finished_processes == 0:
+        print("No hay procesos terminados, libera la la memoria para ver stats.")
+    else:
+        print(f'El turnaround promedio fue de {accum_turnaround / finished_processes}s')
+
+def print_comment(cmd):
+    '''Prints a line comment'''
+    comment = ""
+    for i in range(1, len(cmd)):
+        comment += f'{cmd[i]} '
+    print(comment)
+
+def print_message(cmd):
+    '''Prints goodbye message'''
+    global MESSAGE
+    print(cmd[0])
+    print(MESSAGE)
 
 def free_space(cmd):
     """
@@ -329,11 +362,12 @@ def process_program(program):
         elif cmd[0] == Operation.FREE.value:
             free_space(cmd)
         elif cmd[0] == Operation.COMMENT.value:
-            print("COMMENT")
+            print_comment(cmd)
         elif cmd[0] == Operation.END.value:
-            print("END")
+            get_stats(cmd)
         elif cmd[0] == Operation.EXIT.value:
-            print("EXIT")
+            print_message(cmd)
+            return
         else:
             print("Command not found")
 
