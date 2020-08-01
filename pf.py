@@ -226,13 +226,13 @@ def save_process(cmd):
                 return
             process_id = cmd[2]
             n_pages = math.ceil(size_bytes / PAGE_SIZE)
+            print(f'{cmd[0]} {size_bytes} {process_id}')
+            print(f'Asignar {size_bytes} bytes al proceso {process_id}.')
             if size_bytes > RAM_SIZE or n_pages - len(ram) > len(disk) or n_pages == 0:
                 print("Error: No hay espacio suficiente en memoria.")
             else:
                 error = add_process_to_stats(n_pages, process_id, size_bytes)
                 if error == 0:
-                    print(f'{cmd[0]} {size_bytes} {process_id}')
-                    print(f'Asignar {size_bytes} bytes al proceso {process_id}.')
                     insert_pages(n_pages, process_id)
         except ValueError:
             print("Los parámetros deben ser enteros.")
@@ -241,18 +241,19 @@ def save_process(cmd):
 
 def get_stats(cmd):
     '''Prints the stats pf the program. Turnaround, page faults and swaps by process. Avg turnaround.'''
+    global timer
     print(cmd[0])
     accum_turnaround = 0
     finished_processes = 0
     for process in stats:
-        if stats[process]["active_bit"] == 0:
-            turnaround = stats[process]["end_time"] - stats[process]["arrival_time"]
-            accum_turnaround += turnaround
-            finished_processes += 1
-            page_faults = stats[process]["page_faults"]
-            swap_ins = stats[process]["swap_ins"]
-            swap_outs = stats[process]["swap_outs"]
-            print(f'El proceso {process} tuvo un turnaround de {turnaround}s, {page_faults} page faults, {swap_outs} swap outs, {swap_ins} swap ins')
+        end_time = timer if stats[process]["active_bit"] == 0 else stats[process]["end_time"]
+        turnaround = stats[process]["end_time"] - end_time
+        accum_turnaround += turnaround
+        finished_processes += 1
+        page_faults = stats[process]["page_faults"]
+        swap_ins = stats[process]["swap_ins"]
+        swap_outs = stats[process]["swap_outs"]
+        print(f'El proceso {process} tuvo un turnaround de {turnaround}s, {page_faults} page faults, {swap_outs} swap outs, {swap_ins} swap ins.')
     if finished_processes == 0:
         print("No hay procesos terminados, libera la la memoria para ver stats.")
     else:
@@ -261,7 +262,7 @@ def get_stats(cmd):
 def print_comment(cmd):
     '''Prints a line comment'''
     comment = ""
-    for i in range(1, len(cmd)):
+    for i in range(len(cmd)):
         comment += f'{cmd[i]} '
     print(comment)
 
@@ -370,6 +371,7 @@ def process_program(program):
             return
         else:
             print("Error: Command not found.")
+        print(relocation_queue)
 
 def read_program(file_name):
     """
@@ -392,7 +394,7 @@ def read_program(file_name):
 def main():
     global algorithm
     parser = argparse.ArgumentParser()
-    parser.add_argument('--swap', help='Relocation method: FIFO or LRU.', required=True)
+    parser.add_argument('--swap', help='Relocation method: fifo or lru.', required=True)
     parser.add_argument('--file', help='Name of the input file', required=True)
     args = parser.parse_args()
     algorithm = args.swap
