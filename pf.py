@@ -45,7 +45,7 @@ def add_process_to_stats(n_pages, process_id, size):
     '''Adds a new process to the stats dictionary.'''
     # A process that is currently in memory cannot be loaded more than once.
     if process_id in stats and stats[process_id]["active_bit"] == 1:
-        print(f'Process {process_id} is already in memory, free the process to load it again.')
+        print(f'Error: El proceso {process_id} ya está cargado en memoria.')
         return 1
     new_process = {
         "arrival_time": timer,
@@ -93,7 +93,7 @@ def swap_page_out_of_ram(page_key, disk_frame):
     page_table[page_key]["disk_frame"] = disk_frame
     stats[process_swapped_out]["swap_outs"] += 1
     timer += 1
-    print(f'Página {page_swapped_out} del proceso {process_swapped_out} swappeada al marco {disk_frame} del área de swapping')
+    print(f'Página {page_swapped_out} del proceso {process_swapped_out} swappeada al marco {disk_frame} del área de swapping.')
 
 def swap_page_in_ram(page_key, ram_frame, disk_frame):
     '''Moves a page from disk to ram storage.'''
@@ -107,49 +107,26 @@ def swap_page_in_ram(page_key, ram_frame, disk_frame):
     timer += 1
     print(f'Se localizó la página {page_swapped_in} del proceso {process_swapped_in} que estaba en la posición {disk_frame} de swapping y se cargó al marco {ram_frame}.')
 
-def format_frame_ranges(frames):
-    '''Groups continuous frames.'''
-    ranges = ""
-    for frame in frames:
-        if frame[0] == frame[1]:
-            ranges += f'{frame[0]}, '
-        else:
-            ranges += f'{frame[0]}-{frame[1]}, '
-    return ranges[:-2]
-
-def insert_pages(process_pages, process_id):
-    """
-        Allocates a certain number of pages in main memory.
-        If necessary, it inserts the remaining pages in disk storage.
-
-        Parameters:
-            process_pages: (int) Number of pages to be allocated for the process.
-            process_id: (str) Identifier for the new process.
-    """
-    # Save pages in ram.
-    continuous_frames_ram = []
-    diff = 0
-    pivot = ram[-1] if len(ram) > 0 else -1
+def save_pages_in_ram(process_pages, process_id):
+    ''''Saves pages in ram. Receives the number of pages to be saved and the process id.'''
+    if len(ram) == 0:
+        return 0
+     # Save pages in ram.
+    assigned_frames = []
     while len(ram) > 0 and process_pages > 0:
         # Page key to be inserted in ram.
         page_key = f'{process_id}_{process_pages-1}'
         # Ram frame where the new page will be inserted.
         ram_frame = ram.pop()
         insert_page_in_ram(page_key, ram_frame)
-        # If the ram pages are not continuous.
-        if pivot - ram_frame > diff:
-            # Save the continuous pages, which are between pivot and pivot - diff + 1
-            continuous_frames_ram.append((pivot - diff + 1, pivot))
-            # Set the new pivot and reset the difference
-            pivot = ram_frame
-            diff = -1
+        assigned_frames.append(ram_frame)
         process_pages -= 1
-        diff += 1
-    if pivot >= 0:
-        continuous_frames_ram.append((pivot - diff + 1, pivot))
-        frames_assigned = format_frame_ranges(continuous_frames_ram)
-        print(f'Se asignaron los marcos de página {frames_assigned} al proceso {process_id}')
-    # Save pages in disk.
+    continuous_pages = merge_continuous_frames(assigned_frames)
+    print(f'Se asignaron los marcos de página {continuous_pages} al proceso {process_id}.')
+    return len(assigned_frames)
+
+def save_pages_in_disk(process_pages, process_id):
+    '''Saves pages in disk. Receives the number of pages to be saved and the process id.'''
     while process_pages > 0:
         # Page key to be inserted in ram.
         page_key = f'{process_id}_{process_pages-1}'
@@ -165,6 +142,21 @@ def insert_pages(process_pages, process_id):
         insert_page_in_ram(page_key, ram_frame=ram_frame_swapped_out)
         process_pages -= 1
 
+
+def insert_pages(process_pages, process_id):
+    """
+        Allocates a certain number of pages in main memory.
+        If necessary, it inserts the remaining pages in disk storage.
+
+        Parameters:
+            process_pages: (int) Number of pages to be allocated for the process.
+            process_id: (str) Identifier for the new process.
+    """
+    # Save pages in ram.
+    pages_saved_in_ram = save_pages_in_ram(process_pages, process_id)
+    # Save pages in disk.
+    save_pages_in_disk(process_pages - pages_saved_in_ram, process_id)    
+
 def access_page(cmd):
     """
         Displays a physical direction given a virtual direction.
@@ -179,18 +171,20 @@ def access_page(cmd):
             virtual_direction = int(cmd[1])
             dirty_bit = int(cmd[3])
             process_id = cmd[2]
-            if process_id not in stats or stats[process_id]["active_bit"] == 0 or virtual_direction > stats[process_id]["size"]:
-                print(f'Error: Segementation Fault. Process {process_id} does not exist')
+            if process_id not in stats or stats[process_id]["active_bit"] == 0:
+                print(f'Error: Segementation Fault. El proceso {process_id} no está en memoria.')
+            elif virtual_direction >= stats[process_id]["size"]:
+                print(f'Error: La dirección {virtual_direction} no existe en el proceso {process_id}.')
             else:
                 global timer, algorithm
-                print(f'{cmd[0]} {virtual_direction} {process_id} {dirty_bit    }')
-                print(f'Obtener la dirección real correspondiente a la dirección virtual {virtual_direction} del proceso {process_id}')
+                print(f'{cmd[0]} {virtual_direction} {process_id} {dirty_bit}')
+                print(f'Obtener la dirección real correspondiente a la dirección virtual {virtual_direction} del proceso {process_id}.')
                 logic_page = int(virtual_direction / PAGE_SIZE)
                 access_page_key = f'{process_id}_{logic_page}'
                 page_table[access_page_key]["dirty_bit"] = dirty_bit
                 timer += 0.1
                 if dirty_bit == 1:
-                    print(f'Página {logic_page} del proceso {process_id} modificada')
+                    print(f'Página {logic_page} del proceso {process_id} modificada.')
                     timer += 0.1
                 if page_table[access_page_key]["presence_bit"] == 0:
                     # Mark the page fault.
@@ -209,11 +203,11 @@ def access_page(cmd):
                     if algorithm == "lru":
                         move_page_to_front(access_page_key)
                 real_direction = page_table[access_page_key]["ram_frame"] * PAGE_SIZE + virtual_direction % PAGE_SIZE
-                print(f'Dirección virtual = {virtual_direction}. Dirección real = {real_direction}')
+                print(f'Dirección virtual = {virtual_direction}. Dirección real = {real_direction}.')
         except ValueError:
-            print("Second and fourth parameters should be integers.")
+            print("Error: Los parámetros deben ser enteros.")
     else:
-        print("Incorrect number of parametes.")
+        print(f"Error: Se esperan {ParamsNumber.ACCESS.value} parámetros.")
     
 def save_process(cmd):
     """
@@ -227,20 +221,23 @@ def save_process(cmd):
     if len(cmd) == ParamsNumber.INSERT.value:
         try:
             size_bytes = int(cmd[1])
+            if size_bytes <= 0:
+                print("No hay nada que asignar. Ingrese número mayor a 0.")
+                return
             process_id = cmd[2]
             n_pages = math.ceil(size_bytes / PAGE_SIZE)
             if size_bytes > RAM_SIZE or n_pages - len(ram) > len(disk) or n_pages == 0:
-                print("It is not possible to allocate the process.")
+                print("Error: No hay espacio suficiente en memoria.")
             else:
                 error = add_process_to_stats(n_pages, process_id, size_bytes)
                 if error == 0:
                     print(f'{cmd[0]} {size_bytes} {process_id}')
-                    print(f'Asignar {size_bytes} bytes al proceso {process_id}')
+                    print(f'Asignar {size_bytes} bytes al proceso {process_id}.')
                     insert_pages(n_pages, process_id)
         except ValueError:
-            print("Second parameter should be an integer.")
+            print("Los parámetros deben ser enteros.")
     else:
-        print("Incorrect number of parametes.")
+        print(f"Error: Se esperan {ParamsNumber.INSERT.value} parámetros.")
 
 def get_stats(cmd):
     '''Prints the stats pf the program. Turnaround, page faults and swaps by process. Avg turnaround.'''
@@ -249,7 +246,7 @@ def get_stats(cmd):
     finished_processes = 0
     for process in stats:
         if stats[process]["active_bit"] == 0:
-            turnaround = stats[process]["arrival_time"] - stats[process]["end_time"]
+            turnaround = stats[process]["end_time"] - stats[process]["arrival_time"]
             accum_turnaround += turnaround
             finished_processes += 1
             page_faults = stats[process]["page_faults"]
@@ -284,12 +281,12 @@ def free_space(cmd):
     """
     if len(cmd) == ParamsNumber.FREE.value:
         process_id = cmd[1]
+        # Print command.
+        print(f'{cmd[0]} {process_id}')
         if process_id not in stats or stats[process_id]["active_bit"] == 0:
-            print(f'Could not find process {process_id}')
+            print(f'Error: El proceso {process_id} no está en memoria.')
         else:
             global timer
-            # Print command.
-            print(f'{cmd[0]} {process_id}')
             # Stop the process.
             stats[process_id]["active_bit"] = 0
             n_pages = stats[process_id]["pages"]
@@ -317,12 +314,12 @@ def free_space(cmd):
             disk.sort()
             if len(ram_free_frames) > 0:
                 freed_frames = merge_continuous_frames(ram_free_frames)
-                print(f'Se liberan los marcos de memoria real: {freed_frames}')
+                print(f'Se liberan los marcos de memoria real: {freed_frames}.')
             if len(disk_free_frames) > 0:
                 freed_frames = merge_continuous_frames(disk_free_frames)
-                print(f'Se liberan los marcos de área de swapping: {freed_frames}')
+                print(f'Se liberan los marcos de área de swapping: {freed_frames}.')
     else:
-        print("Incorrect number of parametes.")
+        print(f"Error: Se esperan {ParamsNumber.FREE.value} parámetros.")
 
 def merge_continuous_frames(arr):
     '''Returns an string with continuous frames grouped together.'''
@@ -339,9 +336,12 @@ def merge_continuous_frames(arr):
             else:
                 continuous_frames_str += f'{pivot}-{pivot + diff - 1}, '
             pivot = frame
-            diff = -1
+            diff = 0
         diff += 1
-    continuous_frames_str += f'{pivot}-{pivot + diff - 1}'
+    if diff == 1:
+        continuous_frames_str += f'{pivot}'
+    else:
+        continuous_frames_str += f'{pivot}-{pivot + diff - 1}'
     return continuous_frames_str
 
 def process_program(program):
@@ -369,7 +369,7 @@ def process_program(program):
             print_message(cmd)
             return
         else:
-            print("Command not found")
+            print("Error: Command not found.")
 
 def read_program(file_name):
     """
