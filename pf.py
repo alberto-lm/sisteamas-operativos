@@ -41,23 +41,41 @@ def init_storage():
     for i in range(int(RAM_SIZE / PAGE_SIZE), int(DISK_SIZE / PAGE_SIZE)):
         disk.append(i)
 
+def build_new_process(n_pages, size):
+    '''Creates a new process.'''
+    global timer
+    return {
+        "arrival_time": [timer],
+        "end_time": [],
+        "page_faults": [0],
+        "swap_outs": [0],
+        "swap_ins": [0],
+        "pages": [n_pages],
+        "size": [size],
+        "active_bit": 1
+    }
+
+def create_instance_of_existing_process(n_pages, process_id, size):
+    '''Creates a new instance of an existing process.'''
+    global timer
+    stats[process_id]["arrival_time"].append(timer)
+    stats[process_id]["page_faults"].append(0)
+    stats[process_id]["swap_outs"].append(0)
+    stats[process_id]["swap_ins"].append(0)
+    stats[process_id]["pages"].append(n_pages)
+    stats[process_id]["size"].append(size)
+    stats[process_id]["active_bit"] = 1
+
 def add_process_to_stats(n_pages, process_id, size):
     '''Adds a new process to the stats dictionary.'''
     # A process that is currently in memory cannot be loaded more than once.
     if process_id in stats and stats[process_id]["active_bit"] == 1:
         print(f'Error: El proceso {process_id} ya está cargado en memoria.')
         return 1
-    new_process = {
-        "arrival_time": timer,
-        "end_time": -1,
-        "page_faults": 0,
-        "swap_outs": 0,
-        "swap_ins": 0,
-        "pages": n_pages,
-        "size": size,
-        "active_bit": 1
-    }
-    stats[process_id] = new_process
+    if process_id in stats:
+        create_instance_of_existing_process(n_pages, process_id, size)
+    else:
+        stats[process_id] = build_new_process(n_pages, size)
     return 0
      
 def insert_page_in_ram(page_key, ram_frame):
@@ -91,7 +109,7 @@ def swap_page_out_of_ram(page_key, disk_frame):
     page_table[page_key]["presence_bit"] = 0
     page_table[page_key]["ram_frame"] = -1
     page_table[page_key]["disk_frame"] = disk_frame
-    stats[process_swapped_out]["swap_outs"] += 1
+    stats[process_swapped_out]["swap_outs"][-1] += 1
     timer += 1
     print(f'Página {page_swapped_out} del proceso {process_swapped_out} swappeada al marco {disk_frame} del área de swapping.')
 
@@ -103,7 +121,7 @@ def swap_page_in_ram(page_key, ram_frame, disk_frame):
     page_table[page_key]["presence_bit"] = 1
     page_table[page_key]["ram_frame"] = ram_frame
     page_table[page_key]["disk_frame"] = -1
-    stats[process_swapped_in]["swap_ins"] += 1
+    stats[process_swapped_in]["swap_ins"][-1] += 1
     timer += 1
     print(f'Se localizó la página {page_swapped_in} del proceso {process_swapped_in} que estaba en la posición {disk_frame} de swapping y se cargó al marco {ram_frame}.')
 
@@ -173,7 +191,7 @@ def access_page(cmd):
             process_id = cmd[2]
             if process_id not in stats or stats[process_id]["active_bit"] == 0:
                 print(f'Error: Segementation Fault. El proceso {process_id} no está en memoria.')
-            elif virtual_direction >= stats[process_id]["size"]:
+            elif virtual_direction >= stats[process_id]["size"][-1]:
                 print(f'Error: La dirección {virtual_direction} no existe en el proceso {process_id}.')
             else:
                 global timer, algorithm
@@ -188,7 +206,7 @@ def access_page(cmd):
                     timer += 0.1
                 if page_table[access_page_key]["presence_bit"] == 0:
                     # Mark the page fault.
-                    stats[process_id]["page_faults"] += 1
+                    stats[process_id]["page_faults"][-1] += 1
                     # Get disk frame where the direction to be accessed resides.
                     disk_frame = page_table[access_page_key]["disk_frame"]
                     # Get page to be swapped out of ram.
@@ -239,25 +257,33 @@ def save_process(cmd):
     else:
         print(f"Error: Se esperan {ParamsNumber.INSERT.value} parámetros.")
 
+def get_process_stats(process_id):
+    '''Gets the stats of a single process and returns the average turnaround.'''
+    global timer
+    accum_turnaround = 0
+    stats[process_id]["end_time"].append(timer)
+    times_run = len(stats[process_id]["arrival_time"])
+    for i in range(times_run):
+        turnaround = stats[process_id]["end_time"][i] - stats[process_id]["arrival_time"][i]
+        accum_turnaround += turnaround
+        page_faults = stats[process_id]["page_faults"][i]
+        swap_ins = stats[process_id]["swap_ins"][i]
+        swap_outs = stats[process_id]["swap_outs"][i]
+        print(f'El proceso {process_id} para la corrida número {i+1} tuvo un turnaround de {round(turnaround, 2)}s, {page_faults} page faults, {swap_outs} swap outs, {swap_ins} swap ins.')
+    stats[process_id]["end_time"].pop()
+    return accum_turnaround / times_run
+
 def get_stats(cmd):
     '''Prints the stats pf the program. Turnaround, page faults and swaps by process. Avg turnaround.'''
     global timer
     print(cmd[0])
     accum_turnaround = 0
-    finished_processes = 0
     for process in stats:
-        end_time = timer if stats[process]["active_bit"] == 0 else stats[process]["end_time"]
-        turnaround = stats[process]["end_time"] - end_time
-        accum_turnaround += turnaround
-        finished_processes += 1
-        page_faults = stats[process]["page_faults"]
-        swap_ins = stats[process]["swap_ins"]
-        swap_outs = stats[process]["swap_outs"]
-        print(f'El proceso {process} tuvo un turnaround de {turnaround}s, {page_faults} page faults, {swap_outs} swap outs, {swap_ins} swap ins.')
-    if finished_processes == 0:
-        print("No hay procesos terminados, libera la la memoria para ver stats.")
+        accum_turnaround += get_process_stats(process)
+    if len(stats) > 0:
+        print(f'El turnaround promedio fue de {round((accum_turnaround / len(stats)), 2)}s')
     else:
-        print(f'El turnaround promedio fue de {accum_turnaround / finished_processes}s')
+        print("Error: No se ha corrido ningún proceso.")
 
 def print_comment(cmd):
     '''Prints a line comment'''
@@ -290,10 +316,10 @@ def free_space(cmd):
             global timer
             # Stop the process.
             stats[process_id]["active_bit"] = 0
-            n_pages = stats[process_id]["pages"]
+            n_pages = stats[process_id]["pages"][-1]
             # Increment timer and set end time for the process.
             timer += n_pages * 0.1
-            stats[process_id]["end_time"] = timer
+            stats[process_id]["end_time"].append(timer)
             ram_free_frames = []
             disk_free_frames = []
             for i in range(n_pages):
@@ -371,7 +397,6 @@ def process_program(program):
             return
         else:
             print("Error: Command not found.")
-        print(relocation_queue)
 
 def read_program(file_name):
     """
