@@ -195,7 +195,6 @@ def access_page(cmd):
                 print(f'Error: La dirección {virtual_direction} no existe en el proceso {process_id}.')
             else:
                 global timer, algorithm
-                print(f'{cmd[0]} {virtual_direction} {process_id} {dirty_bit}')
                 print(f'Obtener la dirección real correspondiente a la dirección virtual {virtual_direction} del proceso {process_id}.')
                 logic_page = int(virtual_direction / PAGE_SIZE)
                 access_page_key = f'{process_id}_{logic_page}'
@@ -239,12 +238,11 @@ def save_process(cmd):
     if len(cmd) == ParamsNumber.INSERT.value:
         try:
             size_bytes = int(cmd[1])
+            process_id = cmd[2]
             if size_bytes <= 0:
                 print("No hay nada que asignar. Ingrese número mayor a 0.")
                 return
-            process_id = cmd[2]
             n_pages = math.ceil(size_bytes / PAGE_SIZE)
-            print(f'{cmd[0]} {size_bytes} {process_id}')
             print(f'Asignar {size_bytes} bytes al proceso {process_id}.')
             if size_bytes > RAM_SIZE or n_pages - len(ram) > len(disk) or n_pages == 0:
                 print("Error: No hay espacio suficiente en memoria.")
@@ -253,7 +251,7 @@ def save_process(cmd):
                 if error == 0:
                     insert_pages(n_pages, process_id)
         except ValueError:
-            print("Los parámetros deben ser enteros.")
+            print("Error: Los parámetros deben ser enteros.")
     else:
         print(f"Error: Se esperan {ParamsNumber.INSERT.value} parámetros.")
 
@@ -276,7 +274,6 @@ def get_process_stats(process_id):
 def get_stats(cmd):
     '''Prints the stats pf the program. Turnaround, page faults and swaps by process. Avg turnaround.'''
     global timer
-    print(cmd[0])
     accum_turnaround = 0
     for process in stats:
         accum_turnaround += get_process_stats(process)
@@ -285,17 +282,16 @@ def get_stats(cmd):
     else:
         print("Error: No se ha corrido ningún proceso.")
 
-def print_comment(cmd):
+def print_line(cmd):
     '''Prints a line comment'''
-    comment = ""
+    line = ""
     for i in range(len(cmd)):
-        comment += f'{cmd[i]} '
-    print(comment)
+        line += f'{cmd[i]} '
+    print(line)
 
 def print_message(cmd):
     '''Prints goodbye message'''
     global MESSAGE
-    print(cmd[0])
     print(MESSAGE)
 
 def free_space(cmd):
@@ -309,7 +305,6 @@ def free_space(cmd):
     if len(cmd) == ParamsNumber.FREE.value:
         process_id = cmd[1]
         # Print command.
-        print(f'{cmd[0]} {process_id}')
         if process_id not in stats or stats[process_id]["active_bit"] == 0:
             print(f'Error: El proceso {process_id} no está en memoria.')
         else:
@@ -380,6 +375,7 @@ def process_program(program):
 
     """
     for cmd in program:
+        print_line(cmd)
         if len(cmd) == 0:
             print("Empty line.")
         elif cmd[0] == Operation.ACCESS.value:
@@ -388,14 +384,12 @@ def process_program(program):
             save_process(cmd)
         elif cmd[0] == Operation.FREE.value:
             free_space(cmd)
-        elif cmd[0] == Operation.COMMENT.value:
-            print_comment(cmd)
         elif cmd[0] == Operation.END.value:
             get_stats(cmd)
         elif cmd[0] == Operation.EXIT.value:
             print_message(cmd)
             return
-        else:
+        elif cmd[0] != Operation.COMMENT.value:
             print("Error: Command not found.")
 
 def read_program(file_name):
